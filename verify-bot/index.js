@@ -317,9 +317,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 );
 
             const button = new ButtonBuilder()
-                .setCustomId("verify")
-                .setLabel("✅ Verify")
-                .setStyle(ButtonStyle.Success);
+    .setLabel("✅ Auf Webseite verifizieren")
+    .setStyle(ButtonStyle.Link)
+    .setURL("https://chill-zone-bot-eckb.onrender.com/");
 
             const row = new ActionRowBuilder()
                 .addComponents(button);
