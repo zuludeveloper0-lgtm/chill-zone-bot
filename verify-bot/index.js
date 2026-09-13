@@ -1,430 +1,375 @@
+require("dotenv").config();
+
 const {
     Client,
     GatewayIntentBits,
-    Events,
-    ButtonBuilder,
-    ButtonStyle,
-    ActionRowBuilder,
-    EmbedBuilder,
     REST,
     Routes,
-    SlashCommandBuilder
+    SlashCommandBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
 } = require("discord.js");
 
 const express = require("express");
 const crypto = require("crypto");
 
-require("dotenv").config();
-
-
-// ======================================================
-// EINSTELLUNGEN
-// ======================================================
-
+const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ==============================
+// ENV
+// ==============================
+
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
+const GUILD_ID = process.env.GUILD_ID;
 
 const REDIRECT_URI =
     "https://chill-zone-bot-eckb.onrender.com/callback";
 
+// ==============================
+// DISCORD CLIENT
+// ==============================
 
-// ======================================================
-// WEBSEITE
-// ======================================================
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers
+    ]
+});
 
-const app = express();
+// ==============================
+// WEBSITE
+// ==============================
 
 app.get("/", (req, res) => {
-
     res.send(`
 <!DOCTYPE html>
 <html lang="de">
-
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<meta charset="UTF-8">
+    <title>Chill Zone Verification</title>
 
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            background: #111827;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
 
-<title>Chill Zone Verifizierung</title>
+        .box {
+            background: #1f2937;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            width: 90%;
+            max-width: 450px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+        }
 
-<style>
+        h1 {
+            margin-bottom: 10px;
+        }
 
-* {
-    box-sizing: border-box;
-}
+        p {
+            color: #d1d5db;
+            line-height: 1.5;
+        }
 
-body {
-    margin: 0;
-    min-height: 100vh;
+        .button {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 14px 25px;
+            background: #5865F2;
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: bold;
+        }
 
-    display: flex;
-    justify-content: center;
-    align-items: center;
+        .button:hover {
+            background: #4752c4;
+        }
 
-    background: #111827;
-    color: white;
-
-    font-family: Arial, sans-serif;
-}
-
-.box {
-    width: 90%;
-    max-width: 450px;
-
-    background: #1f2937;
-
-    padding: 40px;
-
-    border-radius: 20px;
-
-    text-align: center;
-
-    box-shadow:
-        0 10px 40px rgba(0,0,0,.4);
-}
-
-h1 {
-    margin-bottom: 10px;
-}
-
-p {
-    color: #d1d5db;
-    line-height: 1.5;
-}
-
-.button {
-    display: inline-block;
-
-    margin-top: 20px;
-
-    padding: 14px 25px;
-
-    background: #5865F2;
-
-    color: white;
-
-    text-decoration: none;
-
-    border-radius: 10px;
-
-    font-weight: bold;
-}
-
-.button:hover {
-    background: #4752c4;
-}
-
-</style>
-
+        .info {
+            margin-top: 25px;
+            font-size: 13px;
+            color: #9ca3af;
+        }
+    </style>
 </head>
 
 <body>
 
 <div class="box">
 
-<h1>🔐 Chill Zone</h1>
+    <h1>🌴 Chill Zone</h1>
 
-<p>
-Willkommen bei der Chill Zone Verifizierung.
-</p>
+    <p>
+        Willkommen bei der Chill Zone!
+    </p>
 
-<p>
-Melde dich mit deinem Discord-Konto an,
-um dich zu verifizieren.
-</p>
+    <p>
+        Um Zugang zum Server zu bekommen,
+        musst du dich mit deinem Discord-Konto verifizieren.
+    </p>
 
-<a class="button" href="/login">
-Mit Discord verifizieren
-</a>
+    <a class="button" href="/login">
+        🔐 Mit Discord verifizieren
+    </a>
+
+    <div class="info">
+        Bei der Verifizierung werden dein Discord-Name,
+        deine Discord-ID und deine von Discord bereitgestellte
+        E-Mail-Adresse verarbeitet.
+    </div>
 
 </div>
 
 </body>
-
 </html>
     `);
 });
 
-
-// ======================================================
-// OAUTH2 STATE
-// ======================================================
-
-const states = new Map();
-
-
-// ======================================================
-// DISCORD LOGIN
-// ======================================================
+// ==============================
+// LOGIN
+// ==============================
 
 app.get("/login", (req, res) => {
 
-    const state =
-        crypto.randomBytes(32).toString("hex");
+    const state = crypto.randomBytes(16).toString("hex");
 
-    states.set(state, Date.now());
+    const authUrl =
+        "https://discord.com/oauth2/authorize" +
+        `?client_id=${CLIENT_ID}` +
+        `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+        `&response_type=code` +
+        `&scope=identify%20email`;
 
-    // State nach 10 Minuten löschen
-
-    setTimeout(() => {
-
-        states.delete(state);
-
-    }, 10 * 60 * 1000);
-
-
-    const params = new URLSearchParams({
-
-        client_id:
-            process.env.CLIENT_ID,
-
-        response_type:
-            "code",
-
-        redirect_uri:
-            REDIRECT_URI,
-
-        scope:
-            "identify",
-
-        state:
-            state
-
-    });
-
-
-    const discordLoginUrl =
-        `https://discord.com/oauth2/authorize?${params.toString()}`;
-
-
-    res.redirect(discordLoginUrl);
-
+    res.redirect(authUrl + `&state=${state}`);
 });
 
-
-// ======================================================
-// OAUTH2 CALLBACK
-// ======================================================
+// ==============================
+// CALLBACK
+// ==============================
 
 app.get("/callback", async (req, res) => {
 
     try {
 
-        const code =
-            req.query.code;
+        const code = req.query.code;
 
-        const state =
-            req.query.state;
-
-
-        // Prüfen
-
-        if (!code || !state) {
-
-            return res.send(`
-                <h1>❌ Fehler</h1>
-                <p>Ungültige Anfrage.</p>
-            `);
-
+        if (!code) {
+            return res.send("❌ Kein OAuth2-Code vorhanden.");
         }
 
+        // ==========================
+        // CODE GEGEN ACCESS TOKEN
+        // ==========================
 
-        // State prüfen
+        const tokenResponse = await fetch(
+            "https://discord.com/api/oauth2/token",
+            {
+                method: "POST",
 
-        if (!states.has(state)) {
+                headers: {
+                    "Content-Type":
+                        "application/x-www-form-urlencoded"
+                },
 
-            return res.send(`
-                <h1>❌ Fehler</h1>
-                <p>Die Anmeldung ist abgelaufen.</p>
-            `);
+                body: new URLSearchParams({
+                    client_id: CLIENT_ID,
+                    client_secret: CLIENT_SECRET,
+                    grant_type: "authorization_code",
+                    code: code,
+                    redirect_uri: REDIRECT_URI
+                })
+            }
+        );
 
+        const tokenData = await tokenResponse.json();
+
+        if (!tokenData.access_token) {
+
+            console.log(
+                "❌ OAuth2 Token Fehler:",
+                tokenData
+            );
+
+            return res.send(
+                "❌ Die Discord-Verifizierung ist fehlgeschlagen."
+            );
         }
 
+        // ==========================
+        // DISCORD USER
+        // ==========================
 
-        states.delete(state);
+        const userResponse = await fetch(
+            "https://discord.com/api/users/@me",
+            {
+                headers: {
+                    Authorization:
+                        `Bearer ${tokenData.access_token}`
+                }
+            }
+        );
 
+        const user = await userResponse.json();
 
-        // ==================================================
-        // IP-ADRESSE ERMITTELN
-        // ==================================================
+        if (!user.id) {
+            return res.send(
+                "❌ Discord-Benutzer konnte nicht abgerufen werden."
+            );
+        }
+
+        // ==========================
+        // EMAIL
+        // ==========================
+
+        const email =
+            user.email || "Nicht verfügbar";
+
+        // ==========================
+        // IP
+        // ==========================
 
         const ip =
             req.headers["x-forwarded-for"]
                 ?.split(",")[0]
-                ?.trim()
-            ||
-            req.socket.remoteAddress
-            ||
+                ?.trim() ||
+            req.socket.remoteAddress ||
             "Unbekannt";
 
-
-        // ==================================================
-        // CODE GEGEN ACCESS TOKEN
-        // ==================================================
-
-        const tokenResponse =
-            await fetch(
-                "https://discord.com/api/v10/oauth2/token",
-                {
-
-                    method: "POST",
-
-                    headers: {
-
-                        "Content-Type":
-                            "application/x-www-form-urlencoded"
-
-                    },
-
-                    body:
-                        new URLSearchParams({
-
-                            client_id:
-                                process.env.CLIENT_ID,
-
-                            client_secret:
-                                process.env.CLIENT_SECRET,
-
-                            grant_type:
-                                "authorization_code",
-
-                            code:
-                                code,
-
-                            redirect_uri:
-                                REDIRECT_URI
-
-                        })
-
-                }
-            );
-
-
-        const tokenData =
-            await tokenResponse.json();
-
-
-        if (!tokenResponse.ok) {
-
-            console.error(
-                "❌ Token Fehler:",
-                tokenData
-            );
-
-            return res.send(`
-                <h1>❌ Discord-Fehler</h1>
-                <p>Die Discord-Anmeldung konnte nicht abgeschlossen werden.</p>
-            `);
-
-        }
-
-
-        // ==================================================
-        // DISCORD USER HOLEN
-        // ==================================================
-
-        const userResponse =
-            await fetch(
-                "https://discord.com/api/v10/users/@me",
-                {
-
-                    headers: {
-
-                        Authorization:
-                            `Bearer ${tokenData.access_token}`
-
-                    }
-
-                }
-            );
-
-
-        const user =
-            await userResponse.json();
-
-
-        if (!userResponse.ok) {
-
-            return res.send(`
-                <h1>❌ Fehler</h1>
-                <p>Discord-Benutzer konnte nicht geladen werden.</p>
-            `);
-
-        }
-
-
-        // ==================================================
-        // SERVER HOLEN
-        // ==================================================
+        // ==========================
+        // SERVER
+        // ==========================
 
         const guild =
-            await client.guilds.fetch(
-                process.env.GUILD_ID
-            );
-
-
-        if (!guild) {
-
-            return res.send(`
-                <h1>❌ Fehler</h1>
-                <p>Der Chill Zone Server wurde nicht gefunden.</p>
-            `);
-
-        }
-
-
-        // ==================================================
-        // PRÜFEN, OB USER AUF SERVER IST
-        // ==================================================
+            await client.guilds.fetch(GUILD_ID);
 
         let member;
-
 
         try {
 
             member =
-                await guild.members.fetch(
-                    user.id
-                );
+                await guild.members.fetch(user.id);
 
-        } catch (error) {
-
-            console.log(
-                `❌ NICHT AUF SERVER | Name: ${user.username} | ID: ${user.id} | IP: ${ip}`
-            );
-
+        } catch {
 
             return res.send(`
-<!DOCTYPE html>
+                <h2>❌ Du bist nicht auf dem Discord-Server.</h2>
+                <p>Bitte tritt zuerst der Chill Zone bei.</p>
+            `);
+        }
 
+        // ==========================
+        // ROLLEN
+        // ==========================
+
+        const verifiedRole =
+            guild.roles.cache.find(
+                role => role.name === "Verified"
+            );
+
+        const unverifiedRole =
+            guild.roles.cache.find(
+                role => role.name === "Unverified"
+            );
+
+        if (!verifiedRole) {
+            return res.send(
+                "❌ Die Rolle 'Verified' wurde nicht gefunden."
+            );
+        }
+
+        // ==========================
+        // VERIFIED HINZUFÜGEN
+        // ==========================
+
+        await member.roles.add(verifiedRole);
+
+        // ==========================
+        // UNVERIFIED ENTFERNEN
+        // ==========================
+
+        if (unverifiedRole) {
+            await member.roles.remove(unverifiedRole);
+        }
+
+        // ==========================
+        // LOG
+        // ==========================
+
+        console.log(
+            "======================================"
+        );
+
+        console.log(
+            `✅ VERIFY | Name: ${user.username}`
+        );
+
+        console.log(
+            `🆔 Discord ID: ${user.id}`
+        );
+
+        console.log(
+            `📧 E-Mail: ${email}`
+        );
+
+        console.log(
+            `🌐 IP: ${ip}`
+        );
+
+        console.log(
+            "======================================"
+        );
+
+        // ==========================
+        // ERFOLG
+        // ==========================
+
+        res.send(`
+<!DOCTYPE html>
 <html lang="de">
 
 <head>
+    <meta charset="UTF-8">
 
-<meta charset="UTF-8">
+    <title>Verifiziert</title>
 
-<title>Chill Zone</title>
+    <style>
 
-<style>
+        body {
+            background: #111827;
+            color: white;
+            font-family: Arial;
+            text-align: center;
+            padding-top: 100px;
+        }
 
-body {
-    background: #111827;
-    color: white;
-    font-family: Arial;
-    text-align: center;
-    padding: 50px;
-}
+        .box {
+            background: #1f2937;
+            padding: 40px;
+            margin: auto;
+            border-radius: 20px;
+            max-width: 450px;
+        }
 
-.box {
-    max-width: 500px;
-    margin: auto;
-    background: #1f2937;
-    padding: 40px;
-    border-radius: 20px;
-}
+        h1 {
+            color: #57F287;
+        }
 
-</style>
+    </style>
 
 </head>
 
@@ -432,343 +377,210 @@ body {
 
 <div class="box">
 
-<h1>❌ Nicht auf dem Server</h1>
+    <h1>✅ Erfolgreich verifiziert!</h1>
 
-<p>
-Du bist noch kein Mitglied der Chill Zone.
-</p>
+    <p>
+        Hallo <b>${escapeHtml(user.username)}</b>!
+    </p>
 
-<p>
-Bitte tritt zuerst dem Discord-Server bei.
-</p>
+    <p>
+        Du hast jetzt Zugriff auf die Chill Zone.
+    </p>
+
+    <p>
+        Du kannst dieses Fenster schließen.
+    </p>
 
 </div>
 
 </body>
 
 </html>
-            `);
-
-        }
-
-
-        // ==================================================
-        // ROLLEN SUCHEN
-        // ==================================================
-
-        const verifiedRole =
-            guild.roles.cache.find(
-                role =>
-                    role.name === "Verified"
-            );
-
-
-        const unverifiedRole =
-            guild.roles.cache.find(
-                role =>
-                    role.name === "Unverified"
-            );
-
-
-        if (!verifiedRole) {
-
-            return res.send(`
-                <h1>❌ Fehler</h1>
-                <p>Die Rolle "Verified" wurde nicht gefunden.</p>
-            `);
-
-        }
-
-
-        // ==================================================
-        // VERIFIED GEBEN
-        // ==================================================
-
-        await member.roles.add(
-            verifiedRole
-        );
-
-
-        // ==================================================
-        // UNVERIFIED ENTFERNEN
-        // ==================================================
-
-        if (unverifiedRole) {
-
-            await member.roles.remove(
-                unverifiedRole
-            );
-
-        }
-
-
-        // ==================================================
-        // ERFOLGREICHES VERIFY LOG
-        // ==================================================
-
-        console.log(
-            `✅ VERIFY | Name: ${user.username} | ID: ${user.id} | IP: ${ip}`
-        );
-
-
-        // ==================================================
-        // ZUM DISCORD PROFIL
-        // ==================================================
-
-        res.redirect(
-            `https://discord.com/users/${user.id}`
-        );
-
+        `);
 
     } catch (error) {
 
         console.error(
-            "❌ OAuth Fehler:",
+            "❌ VERIFICATION ERROR:",
             error
         );
 
-
-        res.send(`
-            <h1>❌ Fehler</h1>
-            <p>Bei der Verifizierung ist ein Fehler aufgetreten.</p>
+        res.status(500).send(`
+            <h2>❌ Ein Fehler ist aufgetreten.</h2>
+            <p>Bitte versuche es später erneut.</p>
         `);
+    }
+});
 
+// ==============================
+// HTML ESCAPE
+// ==============================
+
+function escapeHtml(text) {
+
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+// ==============================
+// WEB SERVER
+// ==============================
+
+app.listen(PORT, () => {
+
+    console.log(
+        `🌐 Webseite läuft auf Port ${PORT}`
+    );
+
+});
+
+// ==============================
+// BOT READY
+// ==============================
+
+client.once("ready", async () => {
+
+    console.log(
+        `✅ Bot ist online als ${client.user.tag}`
+    );
+
+    // ==========================
+    // SLASH COMMAND
+    // ==========================
+
+    const commands = [
+
+        new SlashCommandBuilder()
+            .setName("verify")
+            .setDescription(
+                "Sendet das Verifizierungs-Panel"
+            )
+            .toJSON()
+
+    ];
+
+    const rest = new REST({
+        version: "10"
+    }).setToken(TOKEN);
+
+    try {
+
+        await rest.put(
+            Routes.applicationGuildCommands(
+                CLIENT_ID,
+                GUILD_ID
+            ),
+            {
+                body: commands
+            }
+        );
+
+        console.log(
+            "✅ /verify wurde registriert"
+        );
+
+    } catch (error) {
+
+        console.error(
+            "❌ Fehler beim Registrieren:",
+            error
+        );
     }
 
 });
 
-
-// ======================================================
-// WEB SERVER STARTEN
-// ======================================================
-
-app.listen(
-    PORT,
-    "0.0.0.0",
-    () => {
-
-        console.log(
-            `🌐 Webseite läuft auf Port ${PORT}`
-        );
-
-    }
-);
-
-
-// ======================================================
-// DISCORD BOT
-// ======================================================
-
-const client =
-    new Client({
-
-        intents: [
-
-            GatewayIntentBits.Guilds,
-
-            GatewayIntentBits.GuildMembers
-
-        ]
-
-    });
-
-
-// ======================================================
-// SLASH COMMAND
-// ======================================================
-
-const commands = [
-
-    new SlashCommandBuilder()
-
-        .setName("verify")
-
-        .setDescription(
-            "Sendet die Verify-Nachricht"
-        )
-
-].map(
-    command =>
-        command.toJSON()
-);
-
-
-// ======================================================
-// BOT READY
-// ======================================================
-
-client.once(
-    Events.ClientReady,
-    async () => {
-
-        console.log(
-            `✅ Bot ist online als ${client.user.tag}`
-        );
-
-
-        const rest =
-            new REST({
-                version: "10"
-            }).setToken(
-                process.env.TOKEN
-            );
-
-
-        try {
-
-            await rest.put(
-
-                Routes.applicationCommands(
-                    client.user.id
-                ),
-
-                {
-                    body: commands
-                }
-
-            );
-
-
-            console.log(
-                "✅ /verify wurde registriert"
-            );
-
-
-        } catch (error) {
-
-            console.error(error);
-
-        }
-
-    }
-);
-
-
-// ======================================================
-// NEUES MITGLIED → UNVERIFIED
-// ======================================================
+// ==============================
+// NEUES MITGLIED
+// ==============================
 
 client.on(
-    Events.GuildMemberAdd,
+    "guildMemberAdd",
     async member => {
 
-        const unverifiedRole =
-            member.guild.roles.cache.find(
-                role =>
-                    role.name === "Unverified"
-            );
-
-
-        if (!unverifiedRole) {
-
-            console.log(
-                "❌ Rolle Unverified wurde nicht gefunden"
-            );
-
-            return;
-
-        }
-
-
         try {
 
-            await member.roles.add(
-                unverifiedRole
-            );
+            const role =
+                member.guild.roles.cache.find(
+                    r => r.name === "Unverified"
+                );
 
+            if (!role) {
+
+                console.log(
+                    "❌ Rolle 'Unverified' nicht gefunden."
+                );
+
+                return;
+            }
+
+            await member.roles.add(role);
 
             console.log(
-                `🔒 ${member.user.tag} ist jetzt Unverified`
+                `👤 ${member.user.tag} bekam Unverified`
             );
-
 
         } catch (error) {
 
-            console.error(error);
-
+            console.error(
+                "❌ Fehler bei Unverified:",
+                error
+            );
         }
 
     }
 );
 
-
-// ======================================================
-// /VERIFY
-// ======================================================
+// ==============================
+// SLASH COMMAND
+// ==============================
 
 client.on(
-    Events.InteractionCreate,
+    "interactionCreate",
     async interaction => {
 
         if (!interaction.isChatInputCommand()) {
             return;
         }
 
-
-        if (
-            interaction.commandName !== "verify"
-        ) {
+        if (interaction.commandName !== "verify") {
             return;
         }
 
-
-        const embed =
-            new EmbedBuilder()
-
-                .setTitle(
-                    "🔐 Chill Zone Verifizierung"
-                )
-
-                .setDescription(
-                    "Klicke auf den Button unten, " +
-                    "um dich über unsere Webseite " +
-                    "mit Discord zu verifizieren."
-                );
-
-
         const button =
             new ButtonBuilder()
-
                 .setLabel(
-                    "✅ Auf Webseite verifizieren"
+                    "Auf Webseite verifizieren"
                 )
-
-                .setStyle(
-                    ButtonStyle.Link
-                )
-
+                .setEmoji("✅")
+                .setStyle(ButtonStyle.Link)
                 .setURL(
                     "https://chill-zone-bot-eckb.onrender.com/"
                 );
 
-
         const row =
             new ActionRowBuilder()
-                .addComponents(
-                    button
-                );
-
+                .addComponents(button);
 
         await interaction.reply({
 
-            embeds: [
-                embed
-            ],
+            content:
+                "🔐 **Chill Zone Verifizierung**\n\n" +
+                "Klicke auf den Button, um dich " +
+                "über Discord zu verifizieren.",
 
-            components: [
-                row
-            ]
+            components: [row]
 
         });
 
     }
 );
 
-
-// ======================================================
+// ==============================
 // BOT LOGIN
-// ======================================================
+// ==============================
 
-client.login(
-    process.env.TOKEN
-);
+client.login(TOKEN);
